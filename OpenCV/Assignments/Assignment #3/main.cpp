@@ -14,97 +14,91 @@
  *  int k:          이웃의 범위를 정의하는 숫자. 즉, 커널의 한 변의 크기는 (2k+1)이 된다. 예) k=1 일 경우 커널의 사이즈는 3x3이 됨.
  */
 
-/*
- void mean_filter(IplImage* src, IplImage* dst, int k)
- {
- CvSize size = cvGetSize(src);
- 
- int h = src->height;
- int w = src->width;
- int step = src->widthStep;
- int channels = src->nChannels;
- uchar *data = (uchar *)src->imageData;
- uchar *result_data = (uchar *)dst->imageData;
- int r = size/2;
- 
- // create summed area table
- int *integral_image = new int[(h+1)*(w+1)];
- memset(integral_image, 0, sizeof(int)*(h+1)*(w+1));
- for(int i=1; i<=h; i++)
- for(int j=1; j<=w; j++)
- for(int k=0; k<channels; k++)
- integral_image[i*(w+1)+j] += data[(i-1)*step + (j-1)*channels + k];
- for(int i=1; i<=h; i++)
- for(int j=1; j<=w; j++)
- for(int k=0; k<channels; k++)
- integral_image[i*(w+1)+j] += integral_image[(i-1)*(w+1)+j] + integral_image[i*(w+1)+j-1] - integral_image[(i-1)*(w+1)+j-1];
- 
- // apply filter
- for(int i=r; i<h-r; i++)
- for(int j=r; j<w-r; j++)
- for(int k=0; k<channels; k++)
- result_data[i*step+j*channels+k] = (uchar)((integral_image[(i+r+1)*(w+1)+j+r+1] - integral_image[(i-r)*(w+1)+j+r+1] - integral_image[(i+r+1)*(w+1)+j-r] + integral_image[(i-r)*(w+1)+j-r])/((2*r+1)*(2*r+1)));
- }
- }*/
 void myFastestMeanFilter(IplImage *src, IplImage *dst, int k)
 {
-    CvSize size = cvGetSize(src);   // src 파일의 크기를 저장
+    //  소스 이미지의 사이즈 저장
+    CvSize size = cvGetSize(src);
     
-    // SAT (Summed Area Table)을 생성
-    // 이미지에 필터를 씌움
-    int h = src->height;
-    int w = src->width;
-    //int r = size/2;
+    //  Summed Area Table로 이용할 2차원 배열을 동적할당
+    CvScalar **SAT = new CvScalar*[size.height];
     
-    // create summed area table
-    //int *SAT = new int[][];
-    int *integral_image = new int[(h+1)*(w+1)];
-    memset(integral_image, 0, sizeof(int)*(h+1)*(w+1));
-    for(int i=1; i<=h; i++) {
-        for(int j=1; j<=w; j++) {
-            CvScalar scalar = cvGet2D(src, i-1, j-1);
-            int sum = scalar.val[0];
-            if (src->nChannels == 3) {
-                sum += scalar.val[1] + scalar.val[2];
-            }
-            integral_image[i*(w+1)+j] += sum;
-        }
-    }
-    for(int i=1; i<=h; i++) {
-        for(int j=1; j<=w; j++) {
-            integral_image[i*(w+1)+j] += integral_image[(i-1)*(w+1)+j] + integral_image[i*(w+1)+j-1] - integral_image[(i-1)*(w+1)+j-1];
-        }
-    }
+    for (int i = 0; i < size.height; i++)
+        SAT[i] = new CvScalar[size.width];
     
-    // apply filter
-    for(int i=r; i<h-r; i++) {
-        for(int j=r; j<w-r; j++) {
-            CvScalar scalar = cvScalarAll(0);
-            int count = (2*r + 1) * (2*r + 1);
-            for(int k = 0; k < count; k++) {
-                int ii = k / (2*r+1) - r;
-                int jj = k % (2*r+1) - r;
-                CvScalar pixel = cvGet2D(src, i+ii, j+jj);
-                scalar.val[0] += pixel.val[0];
-                if (src->nChannels == 3) {
-                    scalar.val[1] += pixel.val[1];
-                    scalar.val[2] += pixel.val[2];
-                }
-            }
-            scalar.val[0] /= count;
-            if (src->nChannels == 3) {
-                scalar.val[1] /= count;
-                scalar.val[2] /= count;
-            }
-            cvSet2D(dst, i, j, scalar);
-        }
+    //  커널 사이즈의 크기 계산
+    int total = (2*k+1) * (2*k+1);
+    
+    //  Summed Area Table
+    /*
+     1. 먼저 0,0 좌표를 저장합니다.
+     2. 열의 값을 누적하여 저장합니다.
+     3. 행의 값을 누적하여 저장합니다.
+     4. 나머지 좌표의 연산을 수행합니다.
+     */
+    
+    //  0,0 좌표의 Scalar값 저장
+    for(int k = 0; k<3; k++)
+        SAT[0][0].val[k] = cvGet2D(src, 0, 0).val[k];
+    
+    //  X 축 (열) 저장
+    for(int x = 1; x<size.width; x++)
+    {
+        CvScalar f = cvGet2D(src, 0, x);
+        
+        for(int i = 0; i<3; i++)
+            SAT[0][x].val[i] = f.val[i] + SAT[0][x-1].val[i];
     }
     
-    cvShowImage("src", src);
+    //  Y 축 (행) 저장
+    for(int y = 1; y<size.height; y++)
+    {
+        CvScalar f = cvGet2D(src, y, 0);
+        
+        for(int i = 0; i<3; i++)
+            SAT[y][0].val[i] = f.val[i] + SAT[y-1][0].val[i];
+    }
+    
+    //  나머지 좌표 저장
+    for (int y = 1; y < size.height; y++)
+    {
+        for (int x = 1; x < size.width; x++)
+        {
+            CvScalar f = cvGet2D(src, y, x);
+            
+            for(int i =0; i<3; i++)
+                SAT[y][x].val[i] = f.val[i]
+                                   + SAT[y][x-1].val[i]
+                                   + SAT[y-1][x].val[i]
+                                   - SAT[y-1][x-1].val[i];
+        }
+    }
+    
+    //  Mean Filter
+    for (int y = k; y < size.height-k; y++)
+    {
+        for (int x = k; x < size.width-k; x++)
+        {
+            CvScalar g = cvScalar(0, 0, 0);
+            
+            for(int i = 0; i<3; i++)
+                g.val[i] =
+                (SAT[y+k][x+k].val[i]
+                 - SAT[y+k][x-k].val[i]
+                 - SAT[y-k][x+k].val[i]
+                 + SAT[y-k][x-k].val[i])
+                / total;
+            
+            cvSet2D(dst, y, x, g);
+        }
+    }
+    
     cvShowImage("dst", dst);
-    cvWaitKey();
+    
+    //  동적할당 해제
+    for (int i = 0; i < size.height; i++)
+        delete SAT[i];
+    delete[] SAT;
 }
-
 
 int main()
 {
@@ -130,10 +124,17 @@ int main()
         printf("Input K: ");
         scanf("%d", &kernelSize);
         
-        CvSize size = cvGetSize(src);                       //  원본 이미지 크기
-        IplImage *dst = cvCreateImage(size, 8, 3);          //  결과 이미지 변수
+        IplImage *dst = cvCreateImage(cvGetSize(src), 8, 3);          //  결과 이미지 변수
         
-        myFastestMeanFilter(src, dst, kernelSize);
+        cvShowImage("src", src);    //  원본 이미지 출력
+        
+        myFastestMeanFilter(src, dst, kernelSize);  //  Mean Filter 작업
+        
+        cvShowImage("dst", dst);    //  편집된 이미지 출력
+        
+        printf("Mean Filter Complete.\n");
+        
+        cvWaitKey();
     }
     
     return 0;
